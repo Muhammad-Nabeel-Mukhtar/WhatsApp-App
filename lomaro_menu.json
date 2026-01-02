@@ -1,0 +1,246 @@
+{
+  "restaurant_info": {
+    "name": "Lomaro Pizza",
+    "tagline": "Where Every Slice Feels Special",
+    "phone": "0326-6263343",
+    "address": "Chak # 117, Dhanola, Main Stop, Opp Hafiz Pharmacy, Millat Road, Faisalabad",
+    "delivery": {
+      "free_home_delivery": true
+    },
+    "social": {
+      "instagram": true,
+      "facebook": true,
+      "whatsapp": true,
+      "youtube": true
+    }
+  },
+
+  "starters": [
+    {
+      "name": "Starter Platter",
+      "description": "5 Oven Baked Wings, 4 Pcs Spin Rolls, 1 Dip Souce",
+      "price": 750
+    }
+  ],
+
+  "spin_rolls": [
+    { "name": "Special Spin Rolls", "pieces": 4, "price": 550 },
+    { "name": "Chilli Milli Spin Rolls", "pieces": 4, "price": 500 },
+    { "name": "Malai Boti Melt-Roll", "pieces": 4, "price": 400 }
+  ],
+
+  "appetizers": [
+    { "name": "Chicken Cheese Sticks", "pieces": 3, "price": 650 },
+    { "name": "Chicken Supreme Breads", "pieces": 4, "price": 450 }
+  ],
+
+  "wings": [
+    { "name": "Hot Wings", "size": "5 Pcs", "price": 400 },
+    { "name": "Hot Wings", "size": "10 Pcs", "price": 650 },
+    { "name": "Oven Baked Wings", "size": "5 Pcs", "price": 350 },
+    { "name": "Oven Baked Wings", "size": "10 Pcs", "price": 600 },
+    { "name": "Nuggets", "size": "5 Pcs", "price": 280 },
+    { "name": "Nuggets", "size": "10 Pcs", "price": 450 }
+  ],
+
+  "traditional_pizza": [
+    {
+      "name": "Chicken Tikka",
+      "sizes": { "Small": 450, "Medium": 900, "Large": 1200, "ExLarge": 1800 }
+    },
+    {
+      "name": "Chicken Supreme",
+      "sizes": { "Small": 450, "Medium": 900, "Large": 1200, "ExLarge": 1800 }
+    },
+    {
+      "name": "Chicken Fajita",
+      "sizes": { "Small": 450, "Medium": 900, "Large": 1200, "ExLarge": 1800 }
+    },
+    {
+      "name": "Hot & Spices",
+      "sizes": { "Small": 450, "Medium": 900, "Large": 1200, "ExLarge": 1800 }
+    },
+    {
+      "name": "Vage Lover",
+      "sizes": { "Small": 450, "Medium": 900, "Large": 1200, "ExLarge": 1800 }
+    },
+    {
+      "name": "Cheese Lover",
+      "sizes": { "Small": 450, "Medium": 900, "Large": 1200, "ExLarge": 1800 }
+    }
+  ],
+
+  "special_pizza": [
+    {
+      "name": "Lounge Special Pizza",
+      "sizes": { "Small": 499, "Medium": 999, "Large": 1370, "ExLarge": 1970 }
+    },
+    {
+      "name": "Delight Pizza",
+      "sizes": { "Small": 499, "Medium": 999, "Large": 1370, "ExLarge": 1970 }
+    },
+    {
+      "name": "Malai Boti Pizza",
+      "sizes": { "Small": 499, "Medium": 999, "Large": 1370, "ExLarge": 1970 }
+    },
+    {
+      "name": "BBQ Pizza",
+      "sizes": { "Small": 499, "Medium": 999, "Large": 1370, "ExLarge": 1970 }
+    },
+    {
+      "name": "Peri Peri Pizza",
+      "sizes": { "Small": 499, "Medium": 999, "Large": 1370, "ExLarge": 1970 }
+    }
+  ],
+
+  "signature_pizza": [
+    {
+      "name": "Kabab Stuffer",
+      "sizes": { "Medium": 1150, "Large": 1600, "ExLarge": 2200 }
+    },
+    {
+      "name": "Behari Kabab",
+      "sizes": { "Medium": 1150, "Large": 1600, "ExLarge": 2200 }
+    },
+    {
+      "name": "Cheese Stuffer",
+      "sizes": { "Medium": 1150, "Large": 1600, "ExLarge": 2200 }
+    },
+    {
+      "name": "Royal Stuffer",
+      "sizes": { "Medium": 1150, "Large": 1600, "ExLarge": 2200 }
+    }
+  ],
+
+  "square_pizza": [
+    {
+      "name": "Lounge Special Square",
+      "sizes": { "Small": 550, "Medium": 1070, "Large": 1500 }
+    }
+  ],
+
+  "pastas": [
+    { "name": "Lounge Special Pasta", "sizes": { "Small": 400, "Large": 600 } },
+    { "name": "Malai Boti Pasta", "sizes": { "Small": 380, "Large": 580 } },
+    { "name": "Creamy Pasta", "sizes": { "Small": 450, "Large": 650 } },
+    { "name": "Crunch Pasta", "sizes": { "Small": 450, "Large": 650 } }
+  ],
+
+  "royal_pizza": [
+    {
+      "name": "Crown Crust Pizza",
+      "sizes": { "Small": 1100, "Medium": 1450, "Large": 2000 }
+    }
+  ],
+
+  "burgers": [
+    { "name": "Lounge Special Burger", "price": 400 },
+    { "name": "Zinger Burger", "price": 350 },
+    { "name": "Pizza Burger", "price": 500 },
+    { "name": "Zinger Cheese Burger", "price": 350 },
+    { "name": "Petty Burger", "price": 250 }
+  ],
+
+  "doner_wrap_shawarma": [
+    { "name": "Chicken Cheese Doner", "price": 450 },
+    { "name": "Wrap Chicken", "price": 430 },
+    { "name": "Special Wrap", "price": 470 },
+    { "name": "Chicken Shawarma", "price": 250 },
+    { "name": "Zinger Shawarma", "price": 350 }
+  ],
+
+  "french_fries": [
+    { "name": "Loaded Fries", "small": 300, "large": 500 },
+    { "name": "Mayo Garlic Fries", "small": 180, "large": 480 },
+    { "name": "Pizza Fries", "small": 400, "large": 500 },
+    { "name": "Masala Fries", "small": 180, "large": 300 },
+    { "name": "French Fries", "small": 150, "large": 300 }
+  ],
+
+  "sandwiches": [
+    { "name": "Lounge Special Sandwich", "price": 600 },
+    { "name": "Five Star Sandwich", "price": 650 },
+    { "name": "Ring Kabab Sandwich", "price": 650 },
+    { "name": "Cheese Lover Sandwich", "price": 650 }
+  ],
+
+  "cold_drinks": [
+    { "name": "Regular Drink", "price": 110 },
+    { "name": "Half Ltr Drink", "price": 140 },
+    { "name": "1 Ltr Drink", "price": 200 },
+    { "name": "1.5 Ltr Drink", "price": 230 },
+    { "name": "Small Water", "price": 80 },
+    { "name": "Large Water", "price": 120 },
+    { "name": "Tinpack", "price": 130 }
+  ],
+
+  "toppings": [
+    { "name": "Chicken", "sizes": { "Small": 80, "Medium": 130, "Large": 250, "XL": 350 } },
+    { "name": "Vegg", "sizes": { "Small": 100, "Medium": 170, "Large": 300, "XL": 400 } },
+    { "name": "Dip Souse", "sizes": { "Regular": 80 } },
+    { "name": "Cheese Slice", "sizes": { "Regular": 80 } }
+  ],
+
+  "deals": [
+    {
+      "code": "DEAL-1",
+      "items": ["1 Small Pizza", "1 Zinger Burger", "Drink 250ml"],
+      "price": 880
+    },
+    {
+      "code": "DEAL-2",
+      "items": ["1 Medium Pizza", "5 Oven Baked Wings", "1 Ltr Drink"],
+      "price": 1350
+    },
+    {
+      "code": "DEAL-3",
+      "items": ["2 Small Pizza", "1 Ltr Drink"],
+      "price": 1100
+    },
+    {
+      "code": "DEAL-4",
+      "items": ["5 Zinger", "1.5 Ltr Drink"],
+      "price": 1750
+    },
+    {
+      "code": "DEAL-5",
+      "items": ["1 Large Pizza", "10 Oven Baked Wings", "1.5 Ltr Drink"],
+      "price": 1780
+    },
+    {
+      "code": "DEAL-6",
+      "items": ["2 Zinger", "2 Petty", "1 Reg Fries", "1.5 Ltr Drink"],
+      "price": 1320
+    },
+    {
+      "code": "DEAL-7",
+      "items": ["2 Medium SP Pizza"],
+      "price": 1900
+    },
+    {
+      "code": "DEAL-8",
+      "items": ["2 SP Large Pizza", "1.5 Ltr Drink"],
+      "price": 2600
+    },
+    {
+      "code": "MID NIGHT DEAL-1",
+      "items": ["1 Large SP Pizza", "1 Ltr Drink"],
+      "price": 1400
+    },
+    {
+      "code": "MID NIGHT DEAL-2",
+      "items": ["2 Large SP Pizza", "Small Pasta", "1.5 Ltr Drink"],
+      "price": 2900
+    },
+    {
+      "code": "MID NIGHT DEAL-3",
+      "items": ["1 Extra-Large Pizza", "1.5 Ltr Drink"],
+      "price": 1850
+    },
+    {
+      "code": "EVERY TIME",
+      "items": ["Small Pizza", "Small Pasta", "Reg Drink"],
+      "price": 950
+    }
+  ]
+}

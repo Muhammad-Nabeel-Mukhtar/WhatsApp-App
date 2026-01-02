@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+motor
+httpx
+python-dotenv
+pydantic
+whatsapp-webhook-client
+requests
+
