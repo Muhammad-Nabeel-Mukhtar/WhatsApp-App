@@ -4,6 +4,5 @@ motor
 httpx
 python-dotenv
 pydantic
-whatsapp-webhook-client
 requests
 
