@@ -7,7 +7,6 @@ import httpx
 
 from client import get_whatsapp_client
 
-
 RESTAURANT_PHONE = os.getenv("RESTAURANT_PHONE")
 PRINTER_API_BASE_URL = os.getenv("PRINTER_API_BASE_URL")
 
@@ -19,6 +18,7 @@ LANGUAGE_STRINGS = {
         "invalid_language": "❌ Please reply with 1 for English or 2 for Urdu.\n❌ براہ کرم 1 یا 2 منتخب کریں۔",
         "select_category": "📋 *Select a Category:*",
         "reply_with_category": "Reply with category number (e.g., `1` for first category)",
+        "back_to_menu": "Or type `menu` to go back to main menu.",
         "invalid_category": "❌ Invalid category number. Please reply with a number between 1 and",
         "invalid_input": "❌ Invalid input. Please reply with a category number (1-",
         "add_more": "Would you like to add more items?",
@@ -71,6 +71,7 @@ LANGUAGE_STRINGS = {
         "invalid_language": "❌ براہ کرم 1 یا 2 منتخب کریں۔\n❌ Please reply with 1 or 2.",
         "select_category": "📋 *کیٹیگری منتخب کریں:*",
         "reply_with_category": "کیٹیگری نمبر کے ساتھ جواب دیں (مثال `1`)",
+        "back_to_menu": "یا مین مینو میں واپس جانے کے لیے `menu` لکھیں۔",
         "invalid_category": "❌ غلط کیٹیگری نمبر۔ براہ کرم 1 سے درمیان رقم کے ساتھ جواب دیں",
         "invalid_input": "❌ غلط ان پٹ۔ براہ کرم کیٹیگری نمبر (1-",
         "add_more": "کیا آپ مزید چیزیں شامل کرنا چاہتے ہیں؟",
@@ -269,24 +270,13 @@ async def handle_user_message(
     cart = session.get("cart") or []
     temp_item = session.get("temp_item") or {}
 
-    # --- ALWAYS: restart to menu (except in language selection) ---
-        # --- ALWAYS: restart to menu (or greetings) ---
-    if text in ["menu", "start", "restart", "main menu", "hi", "hello", "hey", "salam", "assalam o alaikum", "assalamualaikum"]:
-        session.update({
-            "state": "show_menu",
-            "cart": [],
-            "temp_item": {},
-        })
-        await sessions.update_one(
-            {"phone": phone},
-            {"$set": session},
-            upsert=True,
-        )
-        return await show_main_menu(db, language)
-
-
-    # --- STATE: select_language ---
+    # --- STATE: select_language (greetings trigger this first) ---
     if state == "select_language":
+        # Greetings from first contact should ask for language
+        if text in ["hi", "hello", "hey", "salam", "assalam o alaikum", "assalamualaikum", "menu", "start", "restart"]:
+            return f"{get_text('en', 'welcome')}\n\n{get_text('en', 'select_language')}"
+        
+        # Language selection
         if text == "1":
             session["language"] = "en"
             session["state"] = "idle"
@@ -307,6 +297,35 @@ async def handle_user_message(
             return get_text("ur", "default_greeting")
         else:
             return get_text(language, "invalid_language")
+
+    # --- ALWAYS: restart to menu (except language selection) ---
+    if text in ["menu", "start", "restart", "main menu"]:
+        session.update({
+            "state": "show_menu",
+            "cart": [],
+            "temp_item": {},
+        })
+        await sessions.update_one(
+            {"phone": phone},
+            {"$set": session},
+            upsert=True,
+        )
+        return await show_main_menu(db, language)
+
+    # --- Greetings that trigger language selection (for existing sessions) ---
+    if text in ["hi", "hello", "hey", "salam", "assalam o alaikum", "assalamualaikum"]:
+        session.update({
+            "state": "select_language",
+            "language": language,
+            "cart": [],
+            "temp_item": {},
+        })
+        await sessions.update_one(
+            {"phone": phone},
+            {"$set": session},
+            upsert=True,
+        )
+        return f"{get_text(language, 'welcome')}\n\n{get_text(language, 'select_language')}"
 
     # --- STATE: idle ---
     if state == "idle":
@@ -443,7 +462,7 @@ async def handle_user_message(
                         {"$set": session},
                         upsert=True,
                     )
-                    return f"✅ *{item.get('name')}* — Rs. {price}\n\n{get_text(language, 'how_many')}"
+                    return f"✅ *{item.get('name')}* — Rs. {price}\n\n{get_text(language, 'how_many')}\n\n{get_text(language, 'back_to_menu')}"
             else:
                 return get_text(language, "invalid_item")
         except ValueError:
@@ -470,7 +489,7 @@ async def handle_user_message(
                     {"$set": session},
                     upsert=True,
                 )
-                return f"📦 *{temp_item.get('item_name')}* ({chosen_size}) — Rs. {unit_price}\n\n{get_text(language, 'how_many')}"
+                return f"📦 *{temp_item.get('item_name')}* ({chosen_size}) — Rs. {unit_price}\n\n{get_text(language, 'how_many')}\n\n{get_text(language, 'back_to_menu')}"
             else:
                 return f"{get_text(language, 'invalid_size')} {len(size_list)}."
         except ValueError:
@@ -479,7 +498,7 @@ async def handle_user_message(
     # --- STATE: pick_qty ---
     if state == "pick_qty":
         if not text:
-            return f"{get_text(language, 'how_many')}"
+            return f"{get_text(language, 'how_many')}\n\n{get_text(language, 'back_to_menu')}"
 
         try:
             qty = int(text)
@@ -745,6 +764,7 @@ async def show_size_selection(item_name: str, sizes: Dict, language: str = "en")
     lines.extend([
         "",
         get_text(language, "reply_with_size"),
+        get_text(language, "back_to_menu"),
     ])
     return "\n".join(lines)
 
