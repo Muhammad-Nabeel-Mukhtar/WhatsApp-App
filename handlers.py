@@ -270,7 +270,8 @@ async def handle_user_message(
     temp_item = session.get("temp_item") or {}
 
     # --- ALWAYS: restart to menu (except in language selection) ---
-    if text in ["menu", "start", "restart", "main menu"]:
+        # --- ALWAYS: restart to menu (or greetings) ---
+    if text in ["menu", "start", "restart", "main menu", "hi", "hello", "hey", "salam", "assalam o alaikum", "assalamualaikum"]:
         session.update({
             "state": "show_menu",
             "cart": [],
@@ -282,6 +283,7 @@ async def handle_user_message(
             upsert=True,
         )
         return await show_main_menu(db, language)
+
 
     # --- STATE: select_language ---
     if state == "select_language":
