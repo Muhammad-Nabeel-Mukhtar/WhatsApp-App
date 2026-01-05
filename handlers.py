@@ -331,7 +331,7 @@ async def handle_user_message(
         except ValueError:
             return "❌ Invalid input. Please reply with an item number."
 
-    # --- STATE: pick_size ---
+       # --- STATE: pick_size ---
     if state == "pick_size":
         sizes = temp_item.get("sizes") or {}
         size_list = list(sizes.keys())
@@ -353,11 +353,10 @@ async def handle_user_message(
                     upsert=True,
                 )
                 return (
-                 f"📦 *{temp_item.get('item_name')}* ({chosen_size}) — Rs. {unit_price}\n\n"
-                  "How many would you like?\n"
-                 "(Reply with number: 1, 2, 3, etc.)"
-          )
-
+                    f"📦 *{temp_item.get('item_name')}* ({chosen_size}) — Rs. {unit_price}\n\n"
+                    "How many would you like?\n"
+                    "(Reply with number: 1, 2, 3, etc.)"
+                )
             else:
                 return f"❌ Invalid size number. Please pick between 1 and {len(size_list)}."
         except ValueError:
