@@ -3,15 +3,13 @@ from typing import Optional, List, Dict, Any
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from datetime import datetime
 import os
-import httpx  # NEW
+import httpx
 
 from client import get_whatsapp_client
 
-import os
 
 RESTAURANT_PHONE = os.getenv("RESTAURANT_PHONE")
 PRINTER_API_BASE_URL = os.getenv("PRINTER_API_BASE_URL")
-
 
 
 def normalize_text(text: Optional[str]) -> str:
@@ -42,15 +40,13 @@ async def get_all_deals(db: AsyncIOMotorDatabase) -> List[Dict[str, Any]]:
     return await cursor.to_list(length=1000)
 
 
-# ---------- NEW: helper to build printer payload ----------
+# ---------- helper to build printer payload ----------
 
 def build_printer_payload(order_doc: Dict[str, Any], order_id: str) -> Dict[str, Any]:
     """
     Build InvoiceRequest-compatible dict for printer API
     from WhatsApp order document.
     """
-    # Basic restaurant info is defaulted in the printer service,
-    # but sending it explicitly keeps things consistent.
     restaurant_block = {
         "restaurant_name": "Lomaro Pizza",
         "address_line1": "Chak 117 Dhanola, Main Stop,",
@@ -59,11 +55,10 @@ def build_printer_payload(order_doc: Dict[str, Any], order_id: str) -> Dict[str,
         "phone": "PH: 0326-6263343",
     }
 
-    # Meta info
     now = datetime.utcnow()
     meta = {
-        "type": "Home Delivery",  # all WhatsApp orders are delivery for now
-        "sr_no": order_doc.get("serial_no", 0) or 0,  # if you later add a running number
+        "type": "Home Delivery",
+        "sr_no": order_doc.get("serial_no", 0) or 0,
         "date": now.strftime("%d-%m-%y"),
         "time": now.strftime("%H:%M:%S"),
         "rider": None,
@@ -80,7 +75,6 @@ def build_printer_payload(order_doc: Dict[str, Any], order_id: str) -> Dict[str,
     total_amount = 0.0
 
     for item in order_doc.get("items", []):
-        # Deal: flatten as a single line with price
         if "deal_items" in item:
             name = item.get("item_name", "Deal")
             qty = item.get("qty", 1)
@@ -119,13 +113,17 @@ def build_printer_payload(order_doc: Dict[str, Any], order_id: str) -> Dict[str,
     return payload
 
 
-# ---------- NEW: helper to call printer API ----------
+# ---------- helper to call printer API ----------
 
 async def send_to_printers(order_doc: Dict[str, Any], order_id: str) -> None:
     """
     Send order to kitchen and customer printers via Cloudflare URL.
     Non-blocking: failures are logged but don't break the chat flow.
     """
+    if not PRINTER_API_BASE_URL:
+        print("[PRINTER] PRINTER_API_BASE_URL is not set; skipping printer calls.")
+        return
+
     payload = build_printer_payload(order_doc, order_id)
 
     kitchen_url = f"{PRINTER_API_BASE_URL}/print-kitchen-order"
@@ -190,18 +188,16 @@ async def handle_user_message(
         if not text:
             return get_default_response()
 
-        if any(kw in text for kw in ["hi", "hello", "hey", "assalam", "order", "menu", "food", "pizza"]):
-            session["state"] = "show_menu"
-            session["cart"] = []
-            session["temp_item"] = {}
-            await sessions.update_one(
-                {"phone": phone},
-                {"$set": session},
-                upsert=True,
-            )
-            return await show_main_menu(db)
-
-        return get_default_response()
+        # Any non-empty message in idle starts a fresh menu
+        session["state"] = "show_menu"
+        session["cart"] = []
+        session["temp_item"] = {}
+        await sessions.update_one(
+            {"phone": phone},
+            {"$set": session},
+            upsert=True,
+        )
+        return await show_main_menu(db)
 
     # --- STATE: show_menu ---
     if state == "show_menu":
@@ -258,10 +254,9 @@ async def handle_user_message(
                 deal_price = deal.get("price", 0)
                 deal_items = deal.get("items", [])
 
-                # Add entire deal as single "item" to cart
                 cart_item = {
                     "item_name": deal_code,
-                    "deal_items": deal_items,  # list of what's included
+                    "deal_items": deal_items,
                     "size": "Deal",
                     "qty": 1,
                     "unit_price": deal_price,
@@ -358,10 +353,11 @@ async def handle_user_message(
                     upsert=True,
                 )
                 return (
-                    f"📦 *{temp_item.get('item_name')}* ({chosen_size}) — Rs. {unit_price}\n\n"
-                    "How many would you like?\n"
-                    "(Reply with number: 1, 2, 3, etc.)"
-                )
+                 f"📦 *{temp_item.get('item_name')}* ({chosen_size}) — Rs. {unit_price}\n\n"
+                  "How many would you like?\n"
+                 "(Reply with number: 1, 2, 3, etc.)"
+          )
+
             else:
                 return f"❌ Invalid size number. Please pick between 1 and {len(size_list)}."
         except ValueError:
@@ -485,13 +481,9 @@ async def handle_user_message(
             result = await orders.insert_one(order_doc)
             order_id = str(result.inserted_id)
 
-            # Notify restaurant staff via WhatsApp
             await send_restaurant_notification(order_doc, order_id)
-
-            # NEW: send to printers
             await send_to_printers(order_doc, order_id)
 
-            # Reset session
             session.update({
                 "state": "idle",
                 "cart": [],
@@ -550,7 +542,6 @@ async def show_main_menu(db: AsyncIOMotorDatabase) -> str:
     for i, (_, category_name) in enumerate(categories, start=1):
         lines.append(f"{i}. {category_name}")
 
-    # Add Deals as last option
     lines.append(f"{len(categories) + 1}. 🎁 Special Deals")
 
     lines.extend([
@@ -657,12 +648,9 @@ async def show_add_more_menu(cart: List[Dict]) -> str:
     cart_summary = "🛒 *Your Cart:*\n\n"
     total = 0
     for item in cart:
-        # Handle both regular items and deals
         if "deal_items" in item:
-            # It's a deal
             cart_summary += f"• {item['item_name']} = Rs. {item['total_price']}\n"
         else:
-            # Regular item
             cart_summary += (
                 f"• {item['qty']}x {item['item_name']} ({item['size']}) = Rs. {item['total_price']}\n"
             )
@@ -688,11 +676,9 @@ async def show_order_summary(
     total = 0
     for item in cart:
         if "deal_items" in item:
-            # Deal
             lines.append(f"• {item['item_name']}")
             lines.append(f"  Rs. {item['total_price']}")
         else:
-            # Regular item
             lines.append(f"• {item['qty']}x {item['item_name']} ({item['size']})")
             lines.append(f"  Rs. {item['unit_price']} × {item['qty']} = Rs. {item['total_price']}")
         total += item['total_price']
