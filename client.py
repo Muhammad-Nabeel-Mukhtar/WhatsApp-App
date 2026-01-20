@@ -1,18 +1,19 @@
 # whatsapp_integration/client.py
-from typing import Any, Dict
+from typing import Any, Dict, Optional, List
 import httpx
 
-
 from config import get_settings
-
 
 settings = get_settings()
 
 
 class WhatsAppClient:
     """
-    Minimal WhatsApp Cloud API client for MVP.
-    Supports sending plain text messages only.
+    Minimal WhatsApp Cloud API client.
+    Now supports:
+      - text messages
+      - interactive reply buttons
+      - interactive list messages
     """
 
     def __init__(self) -> None:
@@ -22,27 +23,17 @@ class WhatsAppClient:
             "Authorization": f"Bearer {settings.whatsapp_access_token}",
             "Content-Type": "application/json",
         }
-        # single async client; you can later manage lifetime via FastAPI startup/shutdown
         self._client = httpx.AsyncClient(timeout=10.0)
 
     async def send_text_message(self, to_phone: str, text: str) -> Dict[str, Any]:
         """
         Send a plain text WhatsApp message to a user.
-
-        Args:
-            to_phone: WhatsApp phone in international format (e.g. "923001234567").
-                      Meta docs allow without '+'; you can normalize yourself.
-            text: Body of the message.
-
-        Returns:
-            Parsed JSON response from WhatsApp API.
         """
         url = f"{self.base_url}/{self.phone_number_id}/messages"
 
         payload = {
             "messaging_product": "whatsapp",
             "recipient_type": "individual",
-            # WhatsApp Cloud API usually wants number without '+' like 92300...
             "to": to_phone.lstrip("+"),
             "type": "text",
             "text": {
@@ -52,14 +43,96 @@ class WhatsAppClient:
         }
 
         resp = await self._client.post(url, headers=self._headers, json=payload)
-        resp.raise_for_status()  # will raise httpx.HTTPStatusError on non-2xx
+        resp.raise_for_status()
+        return resp.json()
+
+    async def send_reply_buttons(
+        self,
+        to_phone: str,
+        body_text: str,
+        buttons: List[Dict[str, str]],
+    ) -> Dict[str, Any]:
+        """
+        Send an interactive message with reply buttons.
+
+        buttons: list of {"id": "...", "title": "..."} (max 3)
+        """
+        url = f"{self.base_url}/{self.phone_number_id}/messages"
+
+        interactive = {
+            "type": "button",
+            "body": {"text": body_text},
+            "action": {
+                "buttons": [
+                    {
+                        "type": "reply",
+                        "reply": {
+                            "id": b["id"],
+                            "title": b["title"],
+                        },
+                    }
+                    for b in buttons
+                ]
+            },
+        }
+
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": to_phone.lstrip("+"),
+            "type": "interactive",
+            "interactive": interactive,
+        }
+
+        resp = await self._client.post(url, headers=self._headers, json=payload)
+        resp.raise_for_status()
+        return resp.json()
+
+    async def send_list_message(
+        self,
+        to_phone: str,
+        body_text: str,
+        button_text: str,
+        sections: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """
+        Send a WhatsApp list message.
+
+        sections example:
+        [
+          {
+            "title": "Menu Categories",
+            "rows": [
+              {"id": "cat_pizzas", "title": "Pizzas"},
+              {"id": "cat_burgers", "title": "Burgers"},
+              ...
+            ]
+          }
+        ]
+        """
+        url = f"{self.base_url}/{self.phone_number_id}/messages"
+
+        interactive = {
+            "type": "list",
+            "body": {"text": body_text},
+            "action": {
+                "button": button_text,
+                "sections": sections,
+            },
+        }
+
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": to_phone.lstrip("+"),
+            "type": "interactive",
+            "interactive": interactive,
+        }
+
+        resp = await self._client.post(url, headers=self._headers, json=payload)
+        resp.raise_for_status()
         return resp.json()
 
     async def close(self) -> None:
         await self._client.aclose()
-
-
-from typing import Optional  # add this at the top with other imports
 
 
 _client: Optional[WhatsAppClient] = None
@@ -70,4 +143,5 @@ def get_whatsapp_client() -> WhatsAppClient:
     if _client is None:
         _client = WhatsAppClient()
     return _client
+
 

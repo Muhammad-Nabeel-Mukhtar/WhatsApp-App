@@ -1,0 +1,182 @@
+{
+  "version": 3,
+  "screens": [
+    {
+      "id": "welcome_screen",
+      "title": "Lomaro Pizza",
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Header",
+            "children": [
+              {
+                "type": "TextHeading",
+                "text": "🍕 Order Now"
+              }
+            ]
+          },
+          {
+            "type": "Section",
+            "children": [
+              {
+                "type": "TextBody",
+                "text": "Welcome to Lomaro Pizza!\n*Where Every Slice Feels Special*\n\nTap below to start your order."
+              },
+              {
+                "type": "Spacer"
+              },
+              {
+                "type": "Footer",
+                "label": "Begin Order",
+                "on_click_action": {
+                  "name": "navigate",
+                  "next": "category_selection"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "category_selection",
+      "title": "Select Category",
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Section",
+            "children": [
+              {
+                "type": "TextBody",
+                "text": "What would you like to order?"
+              },
+              {
+                "type": "Spacer"
+              },
+              {
+                "type": "RadioButtonsGroup",
+                "name": "category",
+                "data_source": "menu_categories",
+                "required": true
+              },
+              {
+                "type": "Spacer"
+              },
+              {
+                "type": "Footer",
+                "label": "Next",
+                "on_click_action": {
+                  "name": "navigate",
+                  "next": "items_selection"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "items_selection",
+      "title": "Select Items",
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Section",
+            "children": [
+              {
+                "type": "TextBody",
+                "text": "Pick your items (you can select multiple):"
+              },
+              {
+                "type": "Spacer"
+              },
+              {
+                "type": "CheckboxGroup",
+                "name": "items",
+                "data_source": "items_by_category",
+                "required": true
+              },
+              {
+                "type": "Spacer"
+              },
+              {
+                "type": "Footer",
+                "label": "Next",
+                "on_click_action": {
+                  "name": "navigate",
+                  "next": "delivery_details"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "delivery_details",
+      "title": "Delivery Details",
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Section",
+            "children": [
+              {
+                "type": "TextBody",
+                "text": "Please provide your details:"
+              },
+              {
+                "type": "Spacer"
+              },
+              {
+                "type": "TextInput",
+                "name": "customer_name",
+                "label": "Your Name",
+                "input_type": "text",
+                "required": true
+              },
+              {
+                "type": "TextInput",
+                "name": "customer_address",
+                "label": "Delivery Address",
+                "input_type": "text",
+                "required": true
+              },
+              {
+                "type": "TextInput",
+                "name": "customer_phone",
+                "label": "Phone Number",
+                "input_type": "text",
+                "required": true
+              },
+              {
+                "type": "Spacer"
+              },
+              {
+                "type": "Footer",
+                "label": "Complete Order",
+                "on_click_action": {
+                  "name": "complete",
+                  "payload": {}
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "data_sources": {
+    "menu_categories": {
+      "type": "api",
+      "url": "${WHATSAPP_API_URL}/flow-data/categories"
+    },
+    "items_by_category": {
+      "type": "api",
+      "url": "${WHATSAPP_API_URL}/flow-data/items"
+    }
+  }
+}

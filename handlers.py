@@ -1,11 +1,10 @@
-# handlers.py
 from typing import Optional, List, Dict, Any
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from datetime import datetime
 import os
 import httpx
 
-from client import get_whatsapp_client
+from client import get_whatsapp_client, WhatsAppClient
 
 RESTAURANT_PHONE = os.getenv("RESTAURANT_PHONE")
 PRINTER_API_BASE_URL = os.getenv("PRINTER_API_BASE_URL")
@@ -272,11 +271,9 @@ async def handle_user_message(
 
     # --- STATE: select_language (greetings trigger this first) ---
     if state == "select_language":
-        # Greetings from first contact should ask for language
         if text in ["hi", "hello", "hey", "salam", "assalam o alaikum", "assalamualaikum", "menu", "start", "restart"]:
             return f"{get_text('en', 'welcome')}\n\n{get_text('en', 'select_language')}"
-        
-        # Language selection
+
         if text == "1":
             session["language"] = "en"
             session["state"] = "idle"
@@ -332,6 +329,7 @@ async def handle_user_message(
         if not text:
             return get_text(language, "default_greeting")
 
+        # Move to menu, send main action buttons
         session["state"] = "show_menu"
         session["cart"] = []
         session["temp_item"] = {}
@@ -340,11 +338,50 @@ async def handle_user_message(
             {"$set": session},
             upsert=True,
         )
+
+        client = get_whatsapp_client()
+        try:
+            await client.send_reply_buttons(
+                to_phone=phone,
+                body_text="Please choose an option:",
+                buttons=[
+                    {"id": "action_track_order", "title": "Track Order"},
+                    {"id": "action_view_menu", "title": "View Menu"},
+                    {"id": "action_support", "title": "Support"},
+                ],
+            )
+        except Exception as exc:
+            print("[WHATSAPP] Failed to send main action buttons:", repr(exc))
+
         return await show_main_menu(db, language)
 
     # --- STATE: show_menu ---
     if state == "show_menu":
         if not text:
+            # First time in show_menu: send list + text menu
+            categories = await get_all_categories(db)
+            client = get_whatsapp_client()
+            try:
+                sections = [
+                    {
+                        "title": "Menu Categories",
+                        "rows": [
+                            {"id": f"cat_{cat_key}", "title": cat_name}
+                            for cat_key, cat_name in categories
+                        ] + [
+                            {"id": "cat_special_deals", "title": "🎁 Special Deals"},
+                        ],
+                    }
+                ]
+                await client.send_list_message(
+                    to_phone=phone,
+                    body_text="Select a category from the list below:",
+                    button_text="View Categories",
+                    sections=sections,
+                )
+            except Exception as exc:
+                print("[WHATSAPP] Failed to send categories list message:", repr(exc))
+
             return await show_main_menu(db, language)
 
         try:
@@ -857,3 +894,126 @@ async def send_restaurant_notification(order_doc: Dict[str, Any], order_id: str,
         await client.send_text_message(to_phone=RESTAURANT_PHONE, text=text)
     except Exception as exc:
         print("[NOTIFY] Failed to send order notification to restaurant:", repr(exc))
+
+
+async def handle_flow_submission(
+    form_data: Dict[str, Any],
+    phone: str,
+    db: AsyncIOMotorDatabase,
+) -> str:
+    """
+    Process completed WhatsApp Flow submission and create order.
+    Expected form_data example:
+    {
+        "category": "Pizzas",
+        "items": ["Margherita", "Chicken Supreme"],
+        "customer_name": "Ali Raza",
+        "customer_address": "Chak 117 Dhanola...",
+        "customer_phone": "923001234567"
+    }
+    """
+    try:
+        category = (form_data.get("category") or "").strip()
+        items_selected = form_data.get("items") or []
+        customer_name = (form_data.get("customer_name") or "").strip()
+        customer_address = (form_data.get("customer_address") or "").strip()
+        customer_phone = (form_data.get("customer_phone") or "").strip()
+
+        if not category or not items_selected or not customer_name or not customer_address:
+            return "Order incomplete. Please fill all required fields."
+
+        cart: List[Dict[str, Any]] = []
+        total_price = 0.0
+
+        items = await get_items_by_category(db, category)
+        item_map = {item.get("name"): item for item in items}
+
+        for selected_item_name in items_selected:
+            if selected_item_name in item_map:
+                menu_item = item_map[selected_item_name]
+                sizes = menu_item.get("sizes") or {}
+
+                if isinstance(sizes, dict) and sizes:
+                    size = list(sizes.keys())[0]
+                    unit_price = list(sizes.values())[0]
+                else:
+                    size = "Single"
+                    unit_price = menu_item.get("price", 0)
+
+                qty = 1
+                total_item_price = unit_price * qty
+
+                cart_item = {
+                    "item_name": selected_item_name,
+                    "size": size,
+                    "qty": qty,
+                    "unit_price": unit_price,
+                    "total_price": total_item_price,
+                }
+                cart.append(cart_item)
+                total_price += total_item_price
+
+        if not cart:
+            return "No valid items found. Please try again."
+
+        orders = db["orders"]
+        order_doc = {
+            "customer_phone": phone,
+            "customer_name": customer_name,
+            "customer_address": customer_address,
+            "items": cart,
+            "total_price": total_price,
+            "status": "new",
+            "created_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat(),
+            "source": "whatsapp_flow",
+            "language": "en",
+        }
+        result = await orders.insert_one(order_doc)
+        order_id = str(result.inserted_id)
+
+        print(f"[ORDER] Flow order created: {order_id}")
+
+        await send_to_printers(order_doc, order_id)
+        await send_restaurant_notification(order_doc, order_id, "en")
+
+        cart_summary = "\n".join([
+            f"• {item['qty']}x {item['item_name']} ({item['size']}) = Rs. {item['total_price']}"
+            for item in cart
+        ])
+
+        return (
+            f"✅ *Order Confirmed!*\n\n"
+            f"📋 *Order Summary:*\n"
+            f"{cart_summary}\n\n"
+            f"Order ID: `{order_id}`\n"
+            f"Total: Rs. {total_price}\n"
+            f"📍 Address: {customer_address}\n"
+            f"⏱️ Estimated Time: 30-40 minutes\n\n"
+            f"Thank you for ordering from Lomaro Pizza! 🍕"
+        )
+
+    except Exception as exc:
+        print(f"[FLOW] Error processing flow submission: {repr(exc)}")
+        import traceback
+        traceback.print_exc()
+        return "Order failed. Please try again or contact support at 0326-6263343."
+
+
+async def send_flow_button(to_phone: str, flow_id: str) -> None:
+    """
+    Send a button that would start the order flow (placeholder for future).
+    Currently uses reply button; for true Flows you'll use Meta's flow launch API.
+    """
+    client = get_whatsapp_client()
+    try:
+        await client.send_reply_buttons(
+            to_phone=to_phone,
+            body_text="Ready to order? Tap below to open the order form.",
+            buttons=[
+                {"id": f"flow_{flow_id}", "title": "Start Order Form"},
+            ],
+        )
+        print(f"[FLOW] Flow button sent to {to_phone}")
+    except Exception as exc:
+        print(f"[FLOW] Failed to send flow button: {repr(exc)}")
