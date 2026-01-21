@@ -14,6 +14,7 @@ from cryptography.hazmat.primitives import hashes
 from webhook import router as whatsapp_router
 from client import get_whatsapp_client
 from db import get_db
+from fastapi.responses import PlainTextResponse
 from handlers import get_items_by_category
 
 
@@ -398,7 +399,7 @@ async def whatsapp_flow_endpoint(request: Request):
             # Encrypt and return response
             encrypted_response = encrypt_response(response_data, aes_key, iv)
             print(f"[FLOW] ✅ Response encrypted and sent")
-            return {"data": encrypted_response}
+            return PlainTextResponse(content=encrypted_response)
             
         except Exception as e:
             print(f"[FLOW ERROR] Unexpected error in logic: {e}")
