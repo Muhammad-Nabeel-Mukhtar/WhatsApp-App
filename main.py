@@ -5,7 +5,6 @@ import json
 import os
 from datetime import datetime
 from base64 import b64decode, b64encode
-import logging
 
 # Encryption imports
 from cryptography.hazmat.primitives.asymmetric.padding import OAEP, MGF1
@@ -16,23 +15,12 @@ from cryptography.hazmat.primitives import hashes
 from webhook import router as whatsapp_router
 from client import get_whatsapp_client
 from db import get_db
-from handlers import get_items_by_category
-from flow_handlers import (
-    get_categories_for_flow,
-    get_items_for_flow,
-    get_customize_options,
-    calculate_order_total,
-    validate_promo_code,
-    create_order_from_flow
-)
-
-logger = logging.getLogger(__name__)
+from flow_manager import process_flow_screen
 
 app = FastAPI(
     title="Lomaro Pizza AI Receptionist - WhatsApp",
     version="0.1.0",
 )
-
 
 # CORS (you can relax/tighten later)
 app.add_middleware(
@@ -41,7 +29,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
 # ==================== ENCRYPTION/DECRYPTION ====================
 
@@ -117,14 +104,12 @@ def encrypt_response(response, aes_key, iv):
         traceback.print_exc()
         raise
 
-
 # ==================== HEALTH CHECK ====================
 
 @app.get("/health")
 async def health():
     print("🔍 /health endpoint called")
     return {"status": "ok", "service": "whatsapp"}
-
 
 # ==================== WEBHOOK TEST ====================
 
@@ -199,20 +184,25 @@ async def test_webhook_payload(request: Request):
         print(f"[TEST] Unexpected error: {e}")
         return {"status": "error", "message": str(e)}
 
-
 # ==================== WHATSAPP FLOWS ENDPOINT ====================
 
 @app.post("/whatsapp/flow-endpoint")
 async def whatsapp_flow_endpoint(request: Request):
     """
-    WhatsApp Flows endpoint - handles encrypted data exchange with real backend.
+    WhatsApp Flows endpoint to handle dynamic data exchange with ENCRYPTION.
     
-    Flow Screens:
-    1. INIT → CATEGORY (list all categories)
-    2. CATEGORY → ITEMS (fetch items for selected category)
-    3. ITEMS → CUSTOMIZE (show sizes & addons)
-    4. CUSTOMIZE → PROMO (calculate price with promo validation)
-    5. PROMO → CONFIRMATION (create order, send to printer)
+    NEW Architecture (Action-Based Routing):
+    - Routes by ACTION and SCREEN
+    - Uses flow_manager to handle each screen
+    - Server always decides next screen
+    - Linear progression: WELCOME → CATEGORY → ITEMS → CUSTOMIZE → PROMO → PAYMENT → CONFIRMATION → SUCCESS
+
+    Flow payload format:
+    {
+        "action": "ping" | "data_exchange",
+        "screen": "WELCOME" | "CATEGORY" | "ITEMS" | ... | "SUCCESS",
+        "data": { form_data }
+    }
     """
     try:
         body = await request.json()
@@ -232,7 +222,7 @@ async def whatsapp_flow_endpoint(request: Request):
         try:
             db = get_db()
             
-                       # ===== HEALTH CHECK: PING (Meta health check request) =====
+            # ===== HEALTH CHECK: PING (Meta health check request) =====
             if action == "ping":
                 print("[FLOW] ✅ Health check request received")
                 response_data = {
@@ -241,233 +231,36 @@ async def whatsapp_flow_endpoint(request: Request):
                     }
                 }
             
-            # ===== SCREEN: CATEGORY (initial request - first screen) =====
-            elif action == "data_exchange" and screen == "CATEGORY":
-                print("[FLOW] 📋 CATEGORY screen")
-                category = data.get("category", "")
+            # ===== DATA EXCHANGE: Route to appropriate screen handler =====
+            elif action == "data_exchange" and screen:
+                print(f"[FLOW] 🔀 Routing to {screen} handler")
                 
-                # If no category selected yet, return category list
-                if not category:
-                    print("[FLOW] 🚀 First load - returning all categories")
-                    from flow_handlers import get_categories_for_flow
-                    categories = await get_categories_for_flow(db)
-                    
+                # Call flow_manager to process this screen
+                result = await process_flow_screen(db, screen, data)
+                
+                next_screen = result.get("next_screen")
+                response_data_content = result.get("data", {})
+                
+                if next_screen:
+                    # Not terminal - return next screen
                     response_data = {
-                        "screen": "CATEGORY",
-                        "data": {
-                            "categories": categories,
-                            "message": "🍕 Welcome to Lomaro Pizza!\nSelect a category to get started."
-                        }
+                        "screen": next_screen,
+                        "data": response_data_content
                     }
+                    print(f"[FLOW] ✅ Next screen: {next_screen}")
                 else:
-                    # User selected a category, fetch items
-                    print("[FLOW] 📋 User selected category:", category)
-                    try:
-                        from flow_handlers import get_items_for_flow
-                        items = await get_items_for_flow(db, category)
-                        
-                        response_data = {
-                            "screen": "ITEMS",
-                            "data": {
-                                "category": category,
-                                "items": items if items else [
-                                    {"id": "sample1", "title": "No items available"},
-                                ],
-                                "message": "Select an item"
-                            }
-                        }
-                    except Exception as e:
-                        print(f"[FLOW ERROR] Failed to fetch items: {e}")
-                        response_data = {
-                            "screen": "ITEMS",
-                            "data": {
-                                "category": category,
-                                "items": [
-                                    {"id": "sample1", "title": "Error loading items"}
-                                ],
-                                "message": "Error loading items"
-                            }
-                        }
-            
-            # ===== SCREEN: ITEMS (after category selected) =====
-            elif action == "data_exchange" and screen == "ITEMS":
-
-                print("[FLOW] 🍕 ITEMS screen - user selected item")
-                item_id = data.get("selected_item", "")
-                category = data.get("category", "")
-                
-                if not item_id:
+                    # Terminal screen - return completion
                     response_data = {
-                        "screen": "ITEMS",
-                        "data": {
-                            "category": category,
-                            "items": await get_items_for_flow(db, category),
-                            "message": "Please select an item"
-                        }
+                        "data": response_data_content
                     }
-                else:
-                    try:
-                        customize_opts = await get_customize_options(db, item_id)
-                        
-                        response_data = {
-                            "screen": "CUSTOMIZE",
-                            "data": {
-                                "selected_item": item_id,
-                                "category": category,
-                                "sizes": customize_opts.get("sizes", []),
-                                "addons": customize_opts.get("addons", []),
-                                "message": "Select size and addons"
-                            }
-                        }
-                    except Exception as e:
-                        print(f"[FLOW ERROR] Failed to get customize options: {e}")
-                        response_data = {
-                            "screen": "CUSTOMIZE",
-                            "data": {
-                                "selected_item": item_id,
-                                "sizes": [],
-                                "addons": [],
-                                "message": "Error loading options"
-                            }
-                        }
-            
-            # ===== SCREEN: CUSTOMIZE (after item selected) =====
-            elif action == "data_exchange" and screen == "CUSTOMIZE":
-                print("[FLOW] ✨ CUSTOMIZE screen - user customized item")
-                
-                cart_items = data.get("cart_items", [])
-                
-                response_data = {
-                    "screen": "PROMO",
-                    "data": {
-                        "cart_items": cart_items,
-                        "message": "Enter promo code (optional)",
-                        "promo_code_field": ""
-                    }
-                }
-            
-            # ===== SCREEN: PROMO (calculate total) =====
-            elif action == "data_exchange" and screen == "PROMO":
-                print("[FLOW] 💰 PROMO screen - calculating total")
-                
-                cart_items = data.get("cart_items", [])
-                promo_code = data.get("promo_code", "").strip()
-                
-                try:
-                    pricing = await calculate_order_total(db, cart_items, promo_code if promo_code else None)
-                    
-                    response_data = {
-                        "screen": "PAYMENT",
-                        "data": {
-                            "subtotal": pricing["subtotal"],
-                            "discount": pricing["discount"],
-                            "tax": pricing["tax"],
-                            "total": pricing["total"],
-                            "promo_message": pricing["promo_message"],
-                            "cart_items": cart_items
-                        }
-                    }
-                except Exception as e:
-                    print(f"[FLOW ERROR] Failed to calculate total: {e}")
-                    response_data = {
-                        "screen": "PAYMENT",
-                        "data": {
-                            "subtotal": sum(item.get("item_total", 0) for item in cart_items),
-                            "discount": 0,
-                            "tax": 0,
-                            "total": sum(item.get("item_total", 0) for item in cart_items),
-                            "promo_message": "Error calculating price",
-                            "cart_items": cart_items
-                        }
-                    }
-            
-            # ===== SCREEN: PAYMENT (collect payment details) =====
-            elif action == "data_exchange" and screen == "PAYMENT":
-                print("[FLOW] 💳 PAYMENT screen - user reviewed order")
-                
-                response_data = {
-                    "screen": "CONFIRMATION",
-                    "data": {
-                        "message": "Please enter delivery details",
-                        "cart_items": data.get("cart_items", []),
-                        "total": data.get("total", 0)
-                    }
-                }
-            
-            # ===== SCREEN: CONFIRMATION (create order) =====
-            elif action == "data_exchange" and screen == "CONFIRMATION":
-                print("[FLOW] ✅ CONFIRMATION screen - creating order")
-                
-                phone = data.get("customer_phone", "").strip()
-                if not phone:
-                    response_data = {
-                        "screen": "CONFIRMATION",
-                        "data": {
-                            "error": "Phone number is required",
-                            "success": False
-                        }
-                    }
-                else:
-                    try:
-                        # Prepare order data
-                        order_data = {
-                            "customer_phone": phone,
-                            "customer_name": data.get("customer_name", ""),
-                            "customer_address": data.get("customer_address", ""),
-                            "delivery_notes": data.get("delivery_notes", ""),
-                            "cart_items": data.get("cart_items", []),
-                            "subtotal": data.get("subtotal", 0),
-                            "discount": data.get("discount", 0),
-                            "tax": data.get("tax", 0),
-                            "total": data.get("total", 0),
-                            "payment_method": data.get("payment_method", "cod"),
-                            "promo_code": data.get("promo_code", "")
-                        }
-                        
-                        # Create order
-                        result = await create_order_from_flow(db, order_data)
-                        
-                        if result["success"]:
-                            response_data = {
-                                "screen": "SUCCESS",
-                                "data": {
-                                    "order_id": result["order_id"],
-                                    "total": order_data["total"],
-                                    "message": "Order confirmed! Thank you for ordering.",
-                                    "success": True
-                                }
-                            }
-                        else:
-                            response_data = {
-                                "screen": "CONFIRMATION",
-                                "data": {
-                                    "error": result["message"],
-                                    "success": False
-                                }
-                            }
-                    except Exception as e:
-                        print(f"[FLOW ERROR] Failed to create order: {e}")
-                        import traceback
-                        traceback.print_exc()
-                        response_data = {
-                            "screen": "CONFIRMATION",
-                            "data": {
-                                "error": f"Order creation failed: {str(e)}",
-                                "success": False
-                            }
-                        }
+                    print(f"[FLOW] ✅ Flow completed")
             
             # ===== UNKNOWN REQUEST =====
             else:
-                print(f"[FLOW] Unknown action/screen: {action}/{screen}")
-                response_data = {
-                    "screen": screen or "CATEGORY",
-                    "data": {
-                        "error": "Unknown request"
-                    }
-                }
+                print(f"[FLOW] ⚠️ Unknown action/screen combination")
+                response_data = {"error": "Unknown request"}
             
-            # Encrypt and return response as PLAIN TEXT
+            # Encrypt and return response as PLAIN TEXT (not JSON)
             encrypted_response = encrypt_response(response_data, aes_key, iv)
             print(f"[FLOW] ✅ Response encrypted and sent")
             return PlainTextResponse(content=encrypted_response)
@@ -484,12 +277,10 @@ async def whatsapp_flow_endpoint(request: Request):
         traceback.print_exc()
         return {"error": str(e)}, 421  # Return 421 if decryption fails
 
-
 # ==================== REGISTER ROUTERS ====================
 
 # Register WhatsApp routes
 app.include_router(whatsapp_router)
-
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -500,7 +291,6 @@ async def shutdown_event():
         print("[SHUTDOWN] WhatsApp client closed")
     except Exception as e:
         print(f"[SHUTDOWN] Error closing client: {e}")
-
 
 if __name__ == "__main__":
     import uvicorn
