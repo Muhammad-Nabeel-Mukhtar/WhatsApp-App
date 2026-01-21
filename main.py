@@ -232,7 +232,7 @@ async def whatsapp_flow_endpoint(request: Request):
         try:
             db = get_db()
             
-            # ===== HEALTH CHECK: PING (Meta health check) =====
+                       # ===== HEALTH CHECK: PING (Meta health check request) =====
             if action == "ping":
                 print("[FLOW] ✅ Health check request received")
                 response_data = {
@@ -241,52 +241,57 @@ async def whatsapp_flow_endpoint(request: Request):
                     }
                 }
             
-            # ===== INIT: First screen - return categories =====
-            elif action == "INIT":
-                print("[FLOW] 🚀 INIT request for first screen")
-                categories = await get_categories_for_flow(db)
-                
-                response_data = {
-                    "screen": "CATEGORY",
-                    "data": {
-                        "categories": categories,
-                        "message": "🍕 Welcome to Lomaro Pizza!\nSelect a category to get started."
-                    }
-                }
-            
-            # ===== SCREEN: CATEGORY (after INIT) =====
+            # ===== SCREEN: CATEGORY (initial request - first screen) =====
             elif action == "data_exchange" and screen == "CATEGORY":
-                print("[FLOW] 📋 CATEGORY screen - user selected category")
-                category = data.get("category", "traditional_pizza")
+                print("[FLOW] 📋 CATEGORY screen")
+                category = data.get("category", "")
                 
-                try:
-                    items = await get_items_for_flow(db, category)
+                # If no category selected yet, return category list
+                if not category:
+                    print("[FLOW] 🚀 First load - returning all categories")
+                    from flow_handlers import get_categories_for_flow
+                    categories = await get_categories_for_flow(db)
                     
                     response_data = {
-                        "screen": "ITEMS",
+                        "screen": "CATEGORY",
                         "data": {
-                            "category": category,
-                            "items": items if items else [
-                                {"id": "sample1", "title": "No items available"},
-                            ],
-                            "message": "Select an item"
+                            "categories": categories,
+                            "message": "🍕 Welcome to Lomaro Pizza!\nSelect a category to get started."
                         }
                     }
-                except Exception as e:
-                    print(f"[FLOW ERROR] Failed to fetch items: {e}")
-                    response_data = {
-                        "screen": "ITEMS",
-                        "data": {
-                            "category": category,
-                            "items": [
-                                {"id": "sample1", "title": "Error loading items"}
-                            ],
-                            "message": "Error loading items"
+                else:
+                    # User selected a category, fetch items
+                    print("[FLOW] 📋 User selected category:", category)
+                    try:
+                        from flow_handlers import get_items_for_flow
+                        items = await get_items_for_flow(db, category)
+                        
+                        response_data = {
+                            "screen": "ITEMS",
+                            "data": {
+                                "category": category,
+                                "items": items if items else [
+                                    {"id": "sample1", "title": "No items available"},
+                                ],
+                                "message": "Select an item"
+                            }
                         }
-                    }
+                    except Exception as e:
+                        print(f"[FLOW ERROR] Failed to fetch items: {e}")
+                        response_data = {
+                            "screen": "ITEMS",
+                            "data": {
+                                "category": category,
+                                "items": [
+                                    {"id": "sample1", "title": "Error loading items"}
+                                ],
+                                "message": "Error loading items"
+                            }
+                        }
             
             # ===== SCREEN: ITEMS (after category selected) =====
             elif action == "data_exchange" and screen == "ITEMS":
+
                 print("[FLOW] 🍕 ITEMS screen - user selected item")
                 item_id = data.get("selected_item", "")
                 category = data.get("category", "")
