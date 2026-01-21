@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 import json
 import os
 from datetime import datetime
@@ -14,7 +15,6 @@ from cryptography.hazmat.primitives import hashes
 from webhook import router as whatsapp_router
 from client import get_whatsapp_client
 from db import get_db
-from fastapi.responses import PlainTextResponse
 from handlers import get_items_by_category
 
 
@@ -233,6 +233,18 @@ async def whatsapp_flow_endpoint(request: Request):
                     }
                 }
             
+            # ===== INIT: First screen data request =====
+            elif action == "INIT":
+                print("[FLOW] 🚀 INIT request for first screen")
+                # You can customize what data the first screen needs
+                # For now, just tell Flow which screen to show
+                response_data = {
+                    "screen": "WELCOME",   # Must match your first screen id in Flow JSON
+                    "data": {
+                        "status": "ready"
+                    }
+                }
+
             # ===== SCREEN: ITEMS (after category selected) =====
             elif action == "data_exchange" and screen == "ITEMS":
                 print("[FLOW] Fetching items for category...")
@@ -353,7 +365,7 @@ async def whatsapp_flow_endpoint(request: Request):
                 
                 phone = data.get("customer_phone", "")
                 if not phone:
-                    response_data = {"error": "Phone number required"}
+                    response_data = {"screen": "CONFIRMATION", "data": {"error": "Phone number required"}}
                 else:
                     try:
                         orders = db["orders"]
@@ -389,14 +401,23 @@ async def whatsapp_flow_endpoint(request: Request):
                         print(f"[FLOW ERROR] Failed to create order: {e}")
                         import traceback
                         traceback.print_exc()
-                        response_data = {"error": f"Order creation failed: {str(e)}"}
+                        response_data = {
+                            "screen": "CONFIRMATION",
+                            "data": {"error": f"Order creation failed: {str(e)}"}
+                        }
             
             # ===== UNKNOWN REQUEST =====
             else:
                 print(f"[FLOW] Unknown action/screen combination")
-                response_data = {"error": "Unknown request"}
+                # Still must return a screen for Flows to be happy
+                response_data = {
+                    "screen": screen or "WELCOME",
+                    "data": {
+                        "error": "Unknown request"
+                    }
+                }
             
-            # Encrypt and return response
+            # Encrypt and return response as PLAIN TEXT (not JSON)
             encrypted_response = encrypt_response(response_data, aes_key, iv)
             print(f"[FLOW] ✅ Response encrypted and sent")
             return PlainTextResponse(content=encrypted_response)
