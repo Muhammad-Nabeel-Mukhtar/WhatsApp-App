@@ -223,7 +223,7 @@ async def whatsapp_flow_endpoint(request: Request):
         try:
             db = get_db()
             
-                        # ===== HEALTH CHECK: PING (Meta health check request) =====
+            # ===== HEALTH CHECK: PING (Meta health check request) =====
             if action == "ping":
                 print("[FLOW] ✅ Health check request received")
                 response_data = {
@@ -231,10 +231,9 @@ async def whatsapp_flow_endpoint(request: Request):
                         "status": "active"
                     }
                 }
-
             
             # ===== SCREEN: ITEMS (after category selected) =====
-            if action == "data_exchange" and screen == "ITEMS":
+            elif action == "data_exchange" and screen == "ITEMS":
                 print("[FLOW] Fetching items for category...")
                 category = data.get("category", "pizzas")
                 
