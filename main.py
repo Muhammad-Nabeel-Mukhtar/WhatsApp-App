@@ -17,6 +17,7 @@ from client import get_whatsapp_client
 from db import get_db
 from flow_manager import process_flow_screen
 
+
 app = FastAPI(
     title="Lomaro Pizza AI Receptionist - WhatsApp",
     version="0.1.0",
@@ -33,52 +34,57 @@ app.add_middleware(
 # ==================== ENCRYPTION/DECRYPTION ====================
 
 # Load private key from environment
-ENDPOINT_PRIVATE_KEY = os.environ.get('ENDPOINT_PRIVATE_KEY')
+ENDPOINT_PRIVATE_KEY = os.environ.get("ENDPOINT_PRIVATE_KEY")
+
 
 def decrypt_request(body):
     """Decrypt incoming flow request from Meta"""
     try:
-        encrypted_flow_data_b64 = body['encrypted_flow_data']
-        encrypted_aes_key_b64 = body['encrypted_aes_key']
-        initial_vector_b64 = body['initial_vector']
-        
+        encrypted_flow_data_b64 = body["encrypted_flow_data"]
+        encrypted_aes_key_b64 = body["encrypted_aes_key"]
+        initial_vector_b64 = body["initial_vector"]
+
         # Decode base64
         flow_data = b64decode(encrypted_flow_data_b64)
         iv = b64decode(initial_vector_b64)
         encrypted_aes_key = b64decode(encrypted_aes_key_b64)
-        
+
         # Decrypt AES key using RSA private key
         private_key = load_pem_private_key(
-            ENDPOINT_PRIVATE_KEY.encode('utf-8'),
-            password=None
+            ENDPOINT_PRIVATE_KEY.encode("utf-8"),
+            password=None,
         )
         aes_key = private_key.decrypt(
             encrypted_aes_key,
             OAEP(
                 mgf=MGF1(algorithm=hashes.SHA256()),
                 algorithm=hashes.SHA256(),
-                label=None
-            )
+                label=None,
+            ),
         )
-        
+
         # Decrypt flow data using AES-GCM
         encrypted_flow_data_body = flow_data[:-16]  # Last 16 bytes are auth tag
         encrypted_flow_data_tag = flow_data[-16:]
-        
+
         decryptor = Cipher(
             algorithms.AES(aes_key),
-            modes.GCM(iv, encrypted_flow_data_tag)
+            modes.GCM(iv, encrypted_flow_data_tag),
         ).decryptor()
-        
-        decrypted_data_bytes = decryptor.update(encrypted_flow_data_body) + decryptor.finalize()
+
+        decrypted_data_bytes = (
+            decryptor.update(encrypted_flow_data_body) + decryptor.finalize()
+        )
         decrypted_data = json.loads(decrypted_data_bytes.decode("utf-8"))
-        
+
         return decrypted_data, aes_key, iv
     except Exception as e:
         print(f"[DECRYPT ERROR] {e}")
         import traceback
+
         traceback.print_exc()
         raise
+
 
 def encrypt_response(response, aes_key, iv):
     """Encrypt outgoing flow response to Meta"""
@@ -87,31 +93,36 @@ def encrypt_response(response, aes_key, iv):
         flipped_iv = bytearray()
         for byte in iv:
             flipped_iv.append(byte ^ 0xFF)
-        
+
         # Encrypt response
         encryptor = Cipher(
             algorithms.AES(aes_key),
-            modes.GCM(bytes(flipped_iv))
+            modes.GCM(bytes(flipped_iv)),
         ).encryptor()
-        
+
         response_json = json.dumps(response).encode("utf-8")
         encrypted = encryptor.update(response_json) + encryptor.finalize()
-        
+
         return b64encode(encrypted + encryptor.tag).decode("utf-8")
     except Exception as e:
         print(f"[ENCRYPT ERROR] {e}")
         import traceback
+
         traceback.print_exc()
         raise
 
+
 # ==================== HEALTH CHECK ====================
+
 
 @app.get("/health")
 async def health():
     print("🔍 /health endpoint called")
     return {"status": "ok", "service": "whatsapp"}
 
+
 # ==================== WEBHOOK TEST ====================
+
 
 @app.post("/whatsapp/webhook/test")
 async def test_webhook_payload(request: Request):
@@ -184,103 +195,162 @@ async def test_webhook_payload(request: Request):
         print(f"[TEST] Unexpected error: {e}")
         return {"status": "error", "message": str(e)}
 
+
 # ==================== WHATSAPP FLOWS ENDPOINT ====================
+
 
 @app.post("/whatsapp/flow-endpoint")
 async def whatsapp_flow_endpoint(request: Request):
     """
     WhatsApp Flows endpoint to handle dynamic data exchange with ENCRYPTION.
-    
-    NEW Architecture (Action-Based Routing):
-    - Routes by ACTION and SCREEN
-    - Uses flow_manager to handle each screen
-    - Server always decides next screen
-    - Linear progression: WELCOME → CATEGORY → ITEMS → CUSTOMIZE → PROMO → PAYMENT → CONFIRMATION → SUCCESS
 
-    Flow payload format:
-    {
-        "action": "ping" | "data_exchange",
-        "screen": "WELCOME" | "CATEGORY" | "ITEMS" | ... | "SUCCESS",
-        "data": { form_data }
-    }
+    Flow lifecycle:
+    - User opens flow → action: INIT, screen: ""
+    - User interacts   → action: data_exchange, screen: CURRENT
+    - User goes back   → action: BACK, screen: CURRENT
+    - Flow finishes    → response with terminal screen (e.g. SUCCESS)
     """
     try:
         body = await request.json()
-        
-        # Decrypt incoming request
-        decrypted_data, aes_key, iv = decrypt_request(body)
-        
-        action = decrypted_data.get("action")
-        screen = decrypted_data.get("screen")
-        data = decrypted_data.get("data", {})
-        
-        print(f"\n{'='*60}")
-        print(f"[FLOW ENDPOINT] Action: {action}, Screen: {screen}")
-        print(f"[FLOW ENDPOINT] Data: {json.dumps(data, indent=2)}")
-        print(f"{'='*60}\n")
-        
+
+        # Extract encryption fields (may be absent for ping/health)
+        encrypted_flow_data_b64 = body.get("encrypted_flow_data")
+        encrypted_aes_key_b64 = body.get("encrypted_aes_key")
+        initial_vector_b64 = body.get("initial_vector")
+
+        # ===== PING / HEALTH CHECK (NO ENCRYPTED DATA) =====
+        if (
+            not encrypted_flow_data_b64
+            or not encrypted_aes_key_b64
+            or not initial_vector_b64
+        ):
+            print("[FLOW ENDPOINT] ✅ Ping/health request received - endpoint is active")
+            ping_response = {"data": {"status": "active"}}
+            # For ping, Meta expects plain JSON, not encrypted
+            return PlainTextResponse(content=json.dumps(ping_response))
+
+        # ===== ENCRYPTED FLOW REQUESTS (INIT / data_exchange / BACK) =====
         try:
+            # Decrypt incoming request
+            decrypted_data, aes_key, iv = decrypt_request(body)
+
+            action = decrypted_data.get("action")
+            screen = decrypted_data.get("screen", "")  # Empty on INIT
+            data = decrypted_data.get("data", {})
+            flow_token = decrypted_data.get("flow_token", "")
+
+            print(f"\n{'='*60}")
+            print(f"[FLOW ENDPOINT] Action: {action}, Screen: {screen}")
+            print(f"[FLOW ENDPOINT] Data: {json.dumps(data, indent=2)}")
+            print(f"[FLOW ENDPOINT] Flow Token: {flow_token}")
+            print(f"{'='*60}\n")
+
             db = get_db()
-            
-            # ===== HEALTH CHECK: PING (Meta health check request) =====
-            if action == "ping":
-                print("[FLOW] ✅ Health check request received")
-                response_data = {
-                    "data": {
-                        "status": "active"
-                    }
-                }
-            
-            # ===== DATA EXCHANGE: Route to appropriate screen handler =====
-            elif action == "data_exchange" and screen:
-                print(f"[FLOW] 🔀 Routing to {screen} handler")
-                
-                # Call flow_manager to process this screen
-                result = await process_flow_screen(db, screen, data)
-                
+
+            # ===== INIT ACTION (Flow opens) =====
+            if action == "INIT":
+                print("[FLOW ENDPOINT] 🎯 INIT action - Flow starting")
+
+                # Start at WELCOME, server decides first real screen
+                result = await process_flow_screen(
+                    db,
+                    "WELCOME",
+                    {"flow_token": flow_token},
+                )
                 next_screen = result.get("next_screen")
                 response_data_content = result.get("data", {})
-                
+
+                response_data = {
+                    "screen": next_screen if next_screen else "WELCOME",
+                    "data": response_data_content,
+                }
+                print(
+                    f"[FLOW ENDPOINT] ✅ Init complete, first screen: {response_data['screen']}"
+                )
+
+            # ===== DATA EXCHANGE ACTION (User submits form / interacts) =====
+            elif action == "data_exchange" and screen:
+                print(f"[FLOW ENDPOINT] 🔀 Data exchange for screen: {screen}")
+
+                result = await process_flow_screen(db, screen, data)
+
+                next_screen = result.get("next_screen")
+                response_data_content = result.get("data", {})
+
                 if next_screen:
-                    # Not terminal - return next screen
+                    # Not terminal - go to next screen
                     response_data = {
                         "screen": next_screen,
-                        "data": response_data_content
+                        "data": response_data_content,
                     }
-                    print(f"[FLOW] ✅ Next screen: {next_screen}")
+                    print(
+                        f"[FLOW ENDPOINT] ✅ Routing to next screen: {next_screen}"
+                    )
                 else:
-                    # Terminal screen - return completion
+                    # Terminal (stay on current screen, e.g. SUCCESS)
                     response_data = {
-                        "data": response_data_content
+                        "screen": screen,
+                        "data": response_data_content,
                     }
-                    print(f"[FLOW] ✅ Flow completed")
-            
-            # ===== UNKNOWN REQUEST =====
+                    print(
+                        f"[FLOW ENDPOINT] ✅ Flow completed at screen: {screen}"
+                    )
+
+            # ===== BACK ACTION (User pressed back) =====
+            elif action == "BACK" and screen:
+                print(f"[FLOW ENDPOINT] ⬅️ Back action from screen: {screen}")
+
+                # Simplest behavior: go back to CATEGORY
+                result = await process_flow_screen(db, "CATEGORY", data)
+                next_screen = result.get("next_screen", "CATEGORY")
+                response_data_content = result.get("data", {})
+
+                response_data = {
+                    "screen": next_screen,
+                    "data": response_data_content,
+                }
+                print(f"[FLOW ENDPOINT] ✅ Going back to: {next_screen}")
+
+            # ===== UNKNOWN ACTION =====
             else:
-                print(f"[FLOW] ⚠️ Unknown action/screen combination")
-                response_data = {"error": "Unknown request"}
-            
-            # Encrypt and return response as PLAIN TEXT (not JSON)
+                print(
+                    f"[FLOW ENDPOINT] ⚠️ Unknown action: {action}, screen: {screen}"
+                )
+                # IMPORTANT: still return a valid screen to avoid format error
+                response_data = {
+                    "screen": "WELCOME",
+                    "data": {
+                        "error": "Unknown request, starting over",
+                    },
+                }
+
+            # Encrypt and return response as PLAIN TEXT (Meta expects this)
             encrypted_response = encrypt_response(response_data, aes_key, iv)
-            print(f"[FLOW] ✅ Response encrypted and sent")
+            print("[FLOW ENDPOINT] ✅ Response encrypted and sent\n")
             return PlainTextResponse(content=encrypted_response)
-            
+
         except Exception as e:
-            print(f"[FLOW ERROR] Unexpected error in logic: {e}")
+            print(f"[FLOW ENDPOINT ERROR] Unexpected error: {e}")
             import traceback
+
             traceback.print_exc()
+            # On encryption/decryption or logic error, return 500-style JSON
             return {"error": str(e)}, 500
-    
+
     except Exception as e:
-        print(f"[FLOW ENDPOINT ERROR] {e}")
+        print(f"[FLOW ENDPOINT FATAL] {e}")
         import traceback
+
         traceback.print_exc()
-        return {"error": str(e)}, 421  # Return 421 if decryption fails
+        # 421 is what you were using when decryption fails
+        return {"error": str(e)}, 421
+
 
 # ==================== REGISTER ROUTERS ====================
 
 # Register WhatsApp routes
 app.include_router(whatsapp_router)
+
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -291,6 +361,7 @@ async def shutdown_event():
         print("[SHUTDOWN] WhatsApp client closed")
     except Exception as e:
         print(f"[SHUTDOWN] Error closing client: {e}")
+
 
 if __name__ == "__main__":
     import uvicorn
