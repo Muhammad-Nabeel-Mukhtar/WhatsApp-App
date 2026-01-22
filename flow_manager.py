@@ -42,17 +42,24 @@ async def handle_welcome_screen(
 ) -> Dict[str, Any]:
     """
     WELCOME Screen - entry point to flow.
-    Next: CATEGORY (with categories list).
+
+    IMPORTANT:
+    - The Flow JSON already has a button in WELCOME that does:
+        on-click-action: { name: "data_exchange", payload: { "screen": "CATEGORY" } }
+    - So INIT should just show WELCOME, and let the user click that button.
+
+    Therefore:
+    - next_screen MUST be None here.
+    - Returning CATEGORY as next_screen causes the "Unexpected screen" error.
     """
     print("[FLOW MANAGER] 🎯 WELCOME screen handler")
 
-    categories = await get_categories_for_flow(db)
-
+    # You do NOT need to send categories here; CATEGORY screen will fetch them
+    # when the user clicks "Continue to Order".
     return {
-        "next_screen": "CATEGORY",
+        "next_screen": None,  # Stay on WELCOME; user action moves to CATEGORY
         "data": {
             "welcome_message": "Welcome to Lomaro Pizza! 🍕",
-            "categories": categories,
         },
     }
 
