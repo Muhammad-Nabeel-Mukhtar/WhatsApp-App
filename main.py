@@ -5,6 +5,8 @@ import json
 import os
 from datetime import datetime
 from base64 import b64decode, b64encode
+from fastapi.responses import HTMLResponse
+
 
 # Encryption imports
 from cryptography.hazmat.primitives.asymmetric.padding import OAEP, MGF1
@@ -113,6 +115,25 @@ def encrypt_response(response, aes_key, iv):
 
 
 # ==================== HEALTH CHECK ====================
+
+@app.get("/")
+async def root():
+    """Root endpoint that serves HTML with meta-tag for Meta domain verification"""
+    html_content = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta name="facebook-domain-verification" content="z8ql7see9eo5j0289v3dby7dohhiv3" />
+        <title>Lomaro Pizza - WhatsApp Order System</title>
+    </head>
+    <body>
+        <h1>Lomaro Pizza API</h1>
+        <p>WhatsApp Flow Endpoint Active</p>
+        <p>Status: <strong>Verified ✅</strong></p>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=html_content)
 
 
 @app.get("/health")
