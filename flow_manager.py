@@ -36,19 +36,41 @@ SCREEN_FLOW = {
 # ==================== SCREEN HANDLERS ====================
 
 
-# flow_manager.py
 async def handle_welcome_screen(
     db: AsyncIOMotorDatabase,
     data: Dict[str, Any],
 ) -> Dict[str, Any]:
+    """
+    WELCOME Screen:
+
+    - INIT request: data contains flow_token -> stay on WELCOME
+    - data_exchange from button: data is {} -> advance to CATEGORY
+    """
     print("[FLOW MANAGER] 🎯 WELCOME screen handler")
-    
+
+    # Case 1: INIT (flow just opened)
+    # Meta sends decrypted data like: {"flow_token": "..."}
+    if data.get("flow_token"):
+        print("[FLOW MANAGER] WELCOME INIT - stay on WELCOME")
+        return {
+            "next_screen": None,
+            "data": {
+                "welcome_message": "Welcome to Lomaro Pizza! 🍕",
+            },
+        }
+
+    # Case 2: data_exchange from the button (payload: {})
+    print("[FLOW MANAGER] WELCOME data_exchange - advance to CATEGORY")
+    categories = await get_categories_for_flow(db)
+
     return {
-        "next_screen": None,  # ✅ Stay on WELCOME
+        "next_screen": "CATEGORY",
         "data": {
             "welcome_message": "Welcome to Lomaro Pizza! 🍕",
+            "categories": categories,
         },
     }
+
 
 
 
