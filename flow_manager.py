@@ -5,7 +5,7 @@ Integrates with flow_handlers.py and routes to screen handlers.
 
 import json
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from datetime import datetime
 
@@ -26,15 +26,13 @@ SCREEN_FLOW = {
     "WELCOME": ["CATEGORY"],
     "CATEGORY": ["ITEMS"],
     "ITEMS": ["CUSTOMIZE"],
-    "CUSTOMIZE": ["PROMO"],
-    "PROMO": ["PAYMENT"],
+    "CUSTOMIZE": ["PAYMENT"],   # PROMO removed
     "PAYMENT": ["CONFIRMATION"],
     "CONFIRMATION": ["SUCCESS"],
     "SUCCESS": [],  # Terminal
 }
 
 # ==================== SCREEN HANDLERS ====================
-
 
 async def handle_welcome_screen(
     db: AsyncIOMotorDatabase,
@@ -49,7 +47,6 @@ async def handle_welcome_screen(
     print("[FLOW MANAGER] 🎯 WELCOME screen handler")
 
     # Case 1: INIT (flow just opened)
-    # Meta sends decrypted data like: {"flow_token": "..."}
     if data.get("flow_token"):
         print("[FLOW MANAGER] WELCOME INIT - stay on WELCOME")
         return {
@@ -71,9 +68,6 @@ async def handle_welcome_screen(
         },
     }
 
-
-
-
 async def handle_category_screen(
     db: AsyncIOMotorDatabase,
     data: Dict[str, Any],
@@ -88,17 +82,15 @@ async def handle_category_screen(
     selected_category = data.get("category", "")
 
     if not selected_category:
-        # Initial load: show all categories
         categories = await get_categories_for_flow(db)
         return {
-            "next_screen": "CATEGORY",  # Stay here, just populate data
+            "next_screen": "CATEGORY",
             "data": {
                 "message": "Select a category",
                 "categories": categories,
             },
         }
 
-    # Category selected → go to ITEMS
     print(f"[FLOW MANAGER] Category selected: {selected_category}")
     items = await get_items_for_flow(db, selected_category)
 
@@ -110,7 +102,6 @@ async def handle_category_screen(
             "message": f"Select an item from {selected_category}",
         },
     }
-
 
 async def handle_items_screen(
     db: AsyncIOMotorDatabase,
@@ -126,7 +117,6 @@ async def handle_items_screen(
     category = data.get("category", "")
 
     if not selected_item_id:
-        # No selection yet, load items again
         items = await get_items_for_flow(db, category)
         return {
             "next_screen": "ITEMS",
@@ -140,7 +130,6 @@ async def handle_items_screen(
     item_details = await get_item_details(db, selected_item_id)
 
     if not item_details:
-        # Item not found → reload items
         items = await get_items_for_flow(db, category)
         return {
             "next_screen": "ITEMS",
@@ -150,7 +139,6 @@ async def handle_items_screen(
             },
         }
 
-    # Get customize options (sizes, addons)
     customize_options = await get_customize_options(db, selected_item_id)
 
     return {
@@ -166,14 +154,13 @@ async def handle_items_screen(
         },
     }
 
-
 async def handle_customize_screen(
     db: AsyncIOMotorDatabase,
     data: Dict[str, Any],
 ) -> Dict[str, Any]:
     """
     CUSTOMIZE Screen - select size, addons, quantity.
-    Builds/updates cart and moves to PROMO.
+    Builds/updates cart and moves to PAYMENT (PROMO removed).
     """
     print("[FLOW MANAGER] ⚙️ CUSTOMIZE screen handler")
 
@@ -188,13 +175,11 @@ async def handle_customize_screen(
         except Exception:
             quantity = 1
 
-        # Normalize addons
         if addons is None:
             addons = []
         elif isinstance(addons, str):
             addons = [addons]
 
-        # Get item details to calculate price
         item = await get_item_details(db, selected_item_id)
         if not item:
             return {
@@ -202,13 +187,11 @@ async def handle_customize_screen(
                 "data": {"error": "Item not found"},
             }
 
-        # Base item price
         if size and "sizes" in item and isinstance(item["sizes"], dict):
             item_price = item["sizes"].get(size, item.get("price", 0))
         else:
             item_price = item.get("price", 0)
 
-        # Addon prices – READ FROM menus WHERE category='toppings'
         addon_total = 0
         if addons:
             from bson import ObjectId
@@ -228,7 +211,6 @@ async def handle_customize_screen(
         item_total = (item_price + addon_total) * max(quantity, 1)
         print(f"[FLOW MANAGER] Item total calculated: Rs. {item_total}")
 
-        # Build cart item
         cart_item = {
             "item_id": selected_item_id,
             "item_name": item.get("name", "Item"),
@@ -240,7 +222,6 @@ async def handle_customize_screen(
             "item_total": item_total,
         }
 
-        # Existing cart
         cart_items = data.get("cart_items", [])
         if not isinstance(cart_items, list):
             cart_items = []
@@ -249,74 +230,6 @@ async def handle_customize_screen(
         cart_total = sum(ci.get("item_total", 0) for ci in cart_items)
 
         return {
-            "next_screen": "PROMO",
-            "data": {
-                "cart_items": cart_items,
-                "cart_total": str(cart_total),  # string for PROMO data model
-                "message": f"Cart Total: Rs. {cart_total}",
-            },
-        }
-
-    except Exception as e:
-        logger.error(f"[FLOW MANAGER ERROR] CUSTOMIZE: {e}")
-        fallback_cart_items = data.get("cart_items", [])
-        fallback_total = sum(
-            ci.get("item_total", 0) for ci in fallback_cart_items
-        )
-        return {
-            "next_screen": "PROMO",
-            "data": {
-                "error": str(e),
-                "cart_items": fallback_cart_items,
-                "cart_total": str(fallback_total),
-            },
-        }
-
-
-
-async def handle_promo_screen(
-    db: AsyncIOMotorDatabase,
-    data: Dict[str, Any],
-) -> Dict[str, Any]:
-    """
-    PROMO Screen - apply promo code.
-    Next: PAYMENT.
-    """
-    print("[FLOW MANAGER] 🎟️ PROMO screen handler")
-
-    try:
-        promo_code = (data.get("promo_code") or "").strip()
-        cart_items = data.get("cart_items", [])
-        if not isinstance(cart_items, list):
-            cart_items = []
-        cart_total = sum(ci.get("item_total", 0) for ci in cart_items)
-
-        pricing = await calculate_order_total(
-            db,
-            cart_items,
-            promo_code if promo_code else None,
-        )
-
-        return {
-            "next_screen": "PAYMENT",
-            "data": {
-                "cart_items": cart_items,
-                "subtotal": pricing["subtotal"],
-                "discount": pricing["discount"],
-                "tax": pricing["tax"],
-                "total": pricing["total"],
-                "promo_message": pricing["promo_message"],
-                "promo_code": promo_code,
-            },
-        }
-
-    except Exception as e:
-        logger.error(f"[FLOW MANAGER ERROR] PROMO: {e}")
-        cart_items = data.get("cart_items", [])
-        if not isinstance(cart_items, list):
-            cart_items = []
-        cart_total = sum(ci.get("item_total", 0) for ci in cart_items)
-        return {
             "next_screen": "PAYMENT",
             "data": {
                 "cart_items": cart_items,
@@ -324,10 +237,31 @@ async def handle_promo_screen(
                 "discount": 0,
                 "tax": 0,
                 "total": cart_total,
-                "error": str(e),
+                "cart_total": str(cart_total),
+                "promo_code": "",
             },
         }
 
+    except Exception as e:
+        logger.error(f"[FLOW MANAGER ERROR] CUSTOMIZE: {e}")
+        fallback_cart_items = data.get("cart_items", [])
+        if not isinstance(fallback_cart_items, list):
+            fallback_cart_items = []
+        fallback_total = sum(ci.get("item_total", 0) for ci in fallback_cart_items)
+        return {
+            "next_screen": "PAYMENT",
+            "data": {
+                "cart_items": fallback_cart_items,
+                "subtotal": fallback_total,
+                "discount": 0,
+                "tax": 0,
+                "total": fallback_total,
+                "cart_total": str(fallback_total),
+                "promo_code": "",
+            },
+        }
+
+# PROMO handler removed completely
 
 async def handle_payment_screen(
     db: AsyncIOMotorDatabase,
@@ -345,10 +279,16 @@ async def handle_payment_screen(
         "next_screen": "CONFIRMATION",
         "data": {
             "payment_method": payment_method,
+            "cart_items": data.get("cart_items", []),
+            "subtotal": data.get("subtotal", 0),
+            "discount": data.get("discount", 0),
+            "tax": data.get("tax", 0),
+            "total": data.get("total", 0),
+            "promo_code": data.get("promo_code", ""),
+            "cart_total": data.get("cart_total", "0"),
             "message": f"Payment method: {payment_method.upper()}",
         },
     }
-
 
 async def handle_confirmation_screen(
     db: AsyncIOMotorDatabase,
@@ -412,7 +352,6 @@ async def handle_confirmation_screen(
     except Exception as e:
         logger.error(f"[FLOW MANAGER ERROR] CONFIRMATION: {e}")
         import traceback
-
         traceback.print_exc()
         return {
             "next_screen": "SUCCESS",
@@ -420,7 +359,6 @@ async def handle_confirmation_screen(
                 "error": f"Order creation failed: {str(e)}",
             },
         }
-
 
 async def handle_success_screen(
     db: AsyncIOMotorDatabase,
@@ -434,7 +372,7 @@ async def handle_success_screen(
     order_id = data.get("order_id", "")
 
     return {
-        "next_screen": None,  # Terminal
+        "next_screen": None,
         "data": {
             "order_id": order_id,
             "message": "Thank you for your order! 🎉",
@@ -442,9 +380,7 @@ async def handle_success_screen(
         },
     }
 
-
 # ==================== DISPATCHER ====================
-
 
 async def get_screen_handler(screen: str):
     """Return handler function for given screen name."""
@@ -453,7 +389,6 @@ async def get_screen_handler(screen: str):
         "CATEGORY": handle_category_screen,
         "ITEMS": handle_items_screen,
         "CUSTOMIZE": handle_customize_screen,
-        "PROMO": handle_promo_screen,
         "PAYMENT": handle_payment_screen,
         "CONFIRMATION": handle_confirmation_screen,
         "SUCCESS": handle_success_screen,
@@ -466,7 +401,6 @@ async def get_screen_handler(screen: str):
 
     return handler
 
-
 async def process_flow_screen(
     db: AsyncIOMotorDatabase,
     screen: str,
@@ -474,12 +408,6 @@ async def process_flow_screen(
 ) -> Dict[str, Any]:
     """
     Main entry point for processing a flow screen.
-
-    Returns:
-        {
-          "next_screen": "NAME" or None,
-          "data": {...}
-        }
     """
     try:
         print(f"\n[FLOW MANAGER] Processing screen: {screen}")
@@ -496,7 +424,6 @@ async def process_flow_screen(
     except Exception as e:
         logger.error(f"[FLOW MANAGER ERROR] Unexpected error: {e}")
         import traceback
-
         traceback.print_exc()
         return {
             "next_screen": None,
