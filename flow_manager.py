@@ -192,7 +192,6 @@ async def handle_customize_screen(
         if addons is None:
             addons = []
         elif isinstance(addons, str):
-            # Single checkbox selection can come as string
             addons = [addons]
 
         # Get item details to calculate price
@@ -224,7 +223,6 @@ async def handle_customize_screen(
                         first_price = list(topping["sizes"].values())[0]
                         addon_total += first_price
                 except Exception:
-                    # Ignore invalid addon IDs
                     continue
 
         item_total = (item_price + addon_total) * max(quantity, 1)
@@ -242,7 +240,7 @@ async def handle_customize_screen(
             "item_total": item_total,
         }
 
-        # Existing cart (hidden JSON field in Flow)
+        # Existing cart
         cart_items = data.get("cart_items", [])
         if not isinstance(cart_items, list):
             cart_items = []
@@ -251,26 +249,29 @@ async def handle_customize_screen(
         cart_total = sum(ci.get("item_total", 0) for ci in cart_items)
 
         return {
-            "next_screen": "PROMO",   # Move forward after Add to cart
+            "next_screen": "PROMO",
             "data": {
                 "cart_items": cart_items,
-                "cart_total": cart_total,
+                "cart_total": str(cart_total),  # string for PROMO data model
                 "message": f"Cart Total: Rs. {cart_total}",
             },
         }
 
     except Exception as e:
         logger.error(f"[FLOW MANAGER ERROR] CUSTOMIZE: {e}")
+        fallback_cart_items = data.get("cart_items", [])
+        fallback_total = sum(
+            ci.get("item_total", 0) for ci in fallback_cart_items
+        )
         return {
             "next_screen": "PROMO",
             "data": {
                 "error": str(e),
-                "cart_items": data.get("cart_items", []),
-                "cart_total": sum(
-                    ci.get("item_total", 0) for ci in data.get("cart_items", [])
-                ),
+                "cart_items": fallback_cart_items,
+                "cart_total": str(fallback_total),
             },
         }
+
 
 
 async def handle_promo_screen(
