@@ -46,7 +46,6 @@ async def handle_welcome_screen(
     """
     print("[FLOW MANAGER] 🎯 WELCOME screen handler")
 
-    # Case 1: INIT (flow just opened)
     if data.get("flow_token"):
         print("[FLOW MANAGER] WELCOME INIT - stay on WELCOME")
         return {
@@ -56,7 +55,6 @@ async def handle_welcome_screen(
             },
         }
 
-    # Case 2: data_exchange from the button (payload: {})
     print("[FLOW MANAGER] WELCOME data_exchange - advance to CATEGORY")
     categories = await get_categories_for_flow(db)
 
@@ -261,8 +259,6 @@ async def handle_customize_screen(
             },
         }
 
-# PROMO handler removed completely
-
 async def handle_payment_screen(
     db: AsyncIOMotorDatabase,
     data: Dict[str, Any],
@@ -285,7 +281,7 @@ async def handle_payment_screen(
             "tax": data.get("tax", 0),
             "total": data.get("total", 0),
             "promo_code": data.get("promo_code", ""),
-            "cart_total": data.get("cart_total", "0"),
+            "cart_total": str(data.get("total", 0)),
             "message": f"Payment method: {payment_method.upper()}",
         },
     }
