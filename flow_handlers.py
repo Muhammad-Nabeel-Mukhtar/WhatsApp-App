@@ -73,16 +73,14 @@ async def get_items_for_flow(
         for item in items:
             item_id = str(item.get("_id", ""))
             name = item.get("name", "Item")
+            
             sizes = item.get("sizes") or {}
-
-            # Same pricing style as show_items_in_category:
-            # "from Rs. <first size>" if sizes, else "Rs. <price>"
             if isinstance(sizes, dict) and sizes:
                 first_price = list(sizes.values())[0]
-                title = f"{name} — from Rs. {first_price}"
+                title = f"{name} – Rs. {first_price}"
             else:
                 price = item.get("price", 0)
-                title = f"{name} — Rs. {price}"
+                title = f"{name} – Rs. {price}"
 
             items_list.append(
                 {
