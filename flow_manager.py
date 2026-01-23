@@ -182,21 +182,21 @@ async def handle_customize_screen(
         size = data.get("size", "")
         addons = data.get("addons", [])
         quantity_raw = data.get("quantity", 1)
+
         try:
             quantity = int(quantity_raw)
         except Exception:
             quantity = 1
 
-        # Ensure addons is list
+        # Normalize addons
         if addons is None:
             addons = []
-        if isinstance(addons, str):
-            # Could be comma-separated string; you can adapt if needed
+        elif isinstance(addons, str):
+            # Single checkbox selection can come as string
             addons = [addons]
 
         # Get item details to calculate price
         item = await get_item_details(db, selected_item_id)
-
         if not item:
             return {
                 "next_screen": "CUSTOMIZE",
@@ -204,36 +204,30 @@ async def handle_customize_screen(
             }
 
         # Base item price
-        item_price = 0
         if size and "sizes" in item and isinstance(item["sizes"], dict):
             item_price = item["sizes"].get(size, item.get("price", 0))
         else:
             item_price = item.get("price", 0)
 
-        # Addon prices
+        # Addon prices – READ FROM menus WHERE category='toppings'
         addon_total = 0
         if addons:
-            toppings_col = db["toppings"]
             from bson import ObjectId
 
+            menus_col = db["menus"]
             for addon_id in addons:
                 try:
-                    topping = await toppings_col.find_one(
-                        {"_id": ObjectId(addon_id)}
+                    topping = await menus_col.find_one(
+                        {"_id": ObjectId(addon_id), "category": "toppings"}
                     )
-                    if (
-                        topping
-                        and "sizes" in topping
-                        and isinstance(topping["sizes"], dict)
-                    ):
-                        # Use first price as default
-                        addon_total += list(topping["sizes"].values())[0]
+                    if topping and isinstance(topping.get("sizes"), dict):
+                        first_price = list(topping["sizes"].values())[0]
+                        addon_total += first_price
                 except Exception:
                     # Ignore invalid addon IDs
                     continue
 
         item_total = (item_price + addon_total) * max(quantity, 1)
-
         print(f"[FLOW MANAGER] Item total calculated: Rs. {item_total}")
 
         # Build cart item
@@ -248,7 +242,7 @@ async def handle_customize_screen(
             "item_total": item_total,
         }
 
-        # Existing cart
+        # Existing cart (hidden JSON field in Flow)
         cart_items = data.get("cart_items", [])
         if not isinstance(cart_items, list):
             cart_items = []
@@ -257,7 +251,7 @@ async def handle_customize_screen(
         cart_total = sum(ci.get("item_total", 0) for ci in cart_items)
 
         return {
-            "next_screen": "PROMO",
+            "next_screen": "PROMO",   # Move forward after Add to cart
             "data": {
                 "cart_items": cart_items,
                 "cart_total": cart_total,
@@ -273,8 +267,7 @@ async def handle_customize_screen(
                 "error": str(e),
                 "cart_items": data.get("cart_items", []),
                 "cart_total": sum(
-                    ci.get("item_total", 0)
-                    for ci in data.get("cart_items", [])
+                    ci.get("item_total", 0) for ci in data.get("cart_items", [])
                 ),
             },
         }

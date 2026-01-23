@@ -87,7 +87,7 @@ async def get_items_for_flow(
             items_list.append(
                 {
                     "id": item_id,
-                    "title": title,
+                    "title": title[:30],
                 }
             )
 
@@ -147,26 +147,26 @@ async def get_customize_options(
                 )
 
         # Addons from toppings collection (unchanged from your previous flow_handlers)
-        addons_options: List[Dict[str, Any]] = []
+        # Replace the current addons section with this
+        addons_options = []
         try:
-            toppings = db["toppings"]
-            available_toppings = await toppings.find({}).to_list(length=50)
+         menus = db["menus"]
+         topping_items = await menus.find({"category": "toppings"}).to_list(length=50)
 
-            for topping in available_toppings:
-                topping_id = str(topping.get("_id", ""))
-                topping_name = topping.get("name", "")
-                topping_sizes = topping.get("sizes") or {}
+         for topping in topping_items:
+          topping_id = str(topping.get("_id", ""))
+          topping_name = topping.get("name", "")
+          topping_sizes = topping.get("sizes") or {}
 
-                if isinstance(topping_sizes, dict) and topping_sizes:
-                    first_price = list(topping_sizes.values())[0]
-                    addons_options.append(
-                        {
-                            "id": topping_id,
-                            "title": f"{topping_name} +Rs. {first_price}",
-                        }
-                    )
+          if isinstance(topping_sizes, dict) and topping_sizes:
+            first_price = list(topping_sizes.values())[0]
+            addons_options.append({
+                "id": topping_id,
+                "title": f"{topping_name} +Rs. {first_price}",
+            })
         except Exception as e:
-            logger.warning(f"[FLOW] Could not fetch addons: {e}")
+         logger.warning(f"[FLOW] Could not fetch addons: {e}")
+
 
         return {
             "sizes": sizes_options,
