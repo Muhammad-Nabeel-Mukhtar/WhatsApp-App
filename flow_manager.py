@@ -36,41 +36,19 @@ SCREEN_FLOW = {
 # ==================== SCREEN HANDLERS ====================
 
 
+# flow_manager.py
 async def handle_welcome_screen(
     db: AsyncIOMotorDatabase,
     data: Dict[str, Any],
 ) -> Dict[str, Any]:
-    """
-    WELCOME Screen - intro screen that auto-advances to CATEGORY.
-
-    FIXED VERSION:
-    - Pre-fetches categories
-    - Tells the backend to go to CATEGORY as the next screen
-    """
-
-    print("[FLOW MANAGER] 🎯 WELCOME screen handler - auto-advancing to CATEGORY")
-
-    try:
-        # Pre-fetch categories for the next screen
-        categories = await get_categories_for_flow(db)
-
-        return {
-            "next_screen": "CATEGORY",  # ✅ key change: was None
-            "data": {
-                "welcome_message": "Welcome to Lomaro Pizza! 🍕",
-                "categories": categories,  # optional but nice: CATEGORY can reuse this
-            },
-        }
-    except Exception as e:
-        logger.error(f"[FLOW MANAGER ERROR] WELCOME: {e}")
-        # Even if fetching categories fails, still advance; CATEGORY handler can re-fetch
-        return {
-            "next_screen": "CATEGORY",
-            "data": {
-                "welcome_message": "Welcome to Lomaro Pizza! 🍕",
-                "error": str(e),
-            },
-        }
+    print("[FLOW MANAGER] 🎯 WELCOME screen handler")
+    
+    return {
+        "next_screen": None,  # ✅ Stay on WELCOME
+        "data": {
+            "welcome_message": "Welcome to Lomaro Pizza! 🍕",
+        },
+    }
 
 
 
