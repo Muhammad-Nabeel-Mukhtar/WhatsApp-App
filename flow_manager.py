@@ -41,27 +41,37 @@ async def handle_welcome_screen(
     data: Dict[str, Any],
 ) -> Dict[str, Any]:
     """
-    WELCOME Screen - entry point to flow.
+    WELCOME Screen - intro screen that auto-advances to CATEGORY.
 
-    IMPORTANT:
-    - The Flow JSON already has a button in WELCOME that does:
-        on-click-action: { name: "data_exchange", payload: { "screen": "CATEGORY" } }
-    - So INIT should just show WELCOME, and let the user click that button.
-
-    Therefore:
-    - next_screen MUST be None here.
-    - Returning CATEGORY as next_screen causes the "Unexpected screen" error.
+    FIXED VERSION:
+    - Pre-fetches categories
+    - Tells the backend to go to CATEGORY as the next screen
     """
-    print("[FLOW MANAGER] 🎯 WELCOME screen handler")
 
-    # You do NOT need to send categories here; CATEGORY screen will fetch them
-    # when the user clicks "Continue to Order".
-    return {
-        "next_screen": None,  # Stay on WELCOME; user action moves to CATEGORY
-        "data": {
-            "welcome_message": "Welcome to Lomaro Pizza! 🍕",
-        },
-    }
+    print("[FLOW MANAGER] 🎯 WELCOME screen handler - auto-advancing to CATEGORY")
+
+    try:
+        # Pre-fetch categories for the next screen
+        categories = await get_categories_for_flow(db)
+
+        return {
+            "next_screen": "CATEGORY",  # ✅ key change: was None
+            "data": {
+                "welcome_message": "Welcome to Lomaro Pizza! 🍕",
+                "categories": categories,  # optional but nice: CATEGORY can reuse this
+            },
+        }
+    except Exception as e:
+        logger.error(f"[FLOW MANAGER ERROR] WELCOME: {e}")
+        # Even if fetching categories fails, still advance; CATEGORY handler can re-fetch
+        return {
+            "next_screen": "CATEGORY",
+            "data": {
+                "welcome_message": "Welcome to Lomaro Pizza! 🍕",
+                "error": str(e),
+            },
+        }
+
 
 
 async def handle_category_screen(
